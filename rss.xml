@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<rss version="2.0">
+    <channel>
+        <title>Hexo</title>
+        <subtitle>subtitle</subtitle>
+        <icon>http://yoursite.com/images/favicon.ico</icon>
+        <link>http://yoursite.com</link>
+        <author>
+          <name>Yxlfe</name>
+        </author>
+        <description>描述123</description>
+        <language>zh-CN</language>
+        <pubDate>Mon, 15 Apr 2024 20:21:25 +0800</pubDate>
+        <lastBuildDate>Mon, 15 Apr 2024 20:21:25 +0800</lastBuildDate>
+        <category term="关键词1" />
+        <category term="关键词2" />
+        <item>
+            <guid isPermalink="true">http://yoursite.com/block%20compaction/</guid>
+            <title>BlockDB</title>
+            <link>http://yoursite.com/block%20compaction/</link>
+            <pubDate>Mon, 15 Apr 2024 20:21:25 +0800</pubDate>
+            <description><![CDATA[ &lt;h2 id=&#34;block-compaction&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#block-compaction&#34;&gt;#&lt;/a&gt; BLOCK COMPACTION&lt;/h2&gt;
+&lt;h3 id=&#34;data-structure&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#data-structure&#34;&gt;#&lt;/a&gt; Data Structure&lt;/h3&gt;
+&lt;p&gt;在 LevelDB 和 RocksDB 中，传统索引块的索引条目只存储数据块的最大键或最小键之一。为了在子级别识别数据块的类型，我们将数据块的最小键和最大键都添加到块的索引条目中。此外，我们注意到数据块中的最小键和最大键通常具有较长的公共前缀。因此，我们不再存储键的完整字符串，而是仅存储最小键的非共享部分，以减少空间开销。图 3 展示了我们设计中索引块的数据结构。 一个索引条目由几个字段组成，表示数据块的必要信息。字段 Key String 存储数据块的最大键。Key Size 存储 Key String 的大小。Shared Size 存储最小键和最大键的共享前缀的长度。此外，Non-Shared String 存储最小键的非共享部分，而 Non-Shared Size 存储 Non-Shared String 的大小。字段 Value Size 和 Offset 分别存储数据块的长度和偏移量。这样修改后的索引块结构可以提高点查询的性能，因为它可以过滤更多候选的数据块而无需磁盘 I/O。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407144533192.png&#34; alt=&#34;image-20240407144533192&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;algorithms&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#algorithms&#34;&gt;#&lt;/a&gt; Algorithms&lt;/h3&gt;
+&lt;p&gt;Algorithm 1 展示了块压实的过程。我们使用 kv iter 遍历 Li 中所选 SSTable 中的所有键值对。我们获取 S 的索引迭代器 idx iter，用于遍历重叠 SSTable 中索引块的索引条目。idx iter 包含数据块的边界。然后，我们跳过 idx iter 指示的数据块，直到 Li+1 中数据块的最大键超过 kv iter 指向的键。由于跳过的数据块是干净的数据块，我们可以直接重用指向它们的索引条目。然后，我们遍历并跳过 kv iter 中的键值对，直到键大于 Li+1 中数据块的最小键。跳过的键值对不在重叠 SSTable 中的任何数据块内。因此，我们将它们收集起来创建一个或多个数据块。此时，如果 kv iter 指向的键小于数据块的最大键，则执行 UpdateBlock 函数重写此数据块。如果不是，则将 idx iter 向前移动一步并进入下一个循环，直到 idx iter 或 kv iter 无效。Algorithm 2 展示了 UpdateBlock 函数。我们使用归并排序算法对键值对进行排序。注意，将脏数据块读入内存可能会引入额外的随机读取 I/O，因为脏数据块通常在重叠 SSTable 中随机分布。为解决此问题，我们首先通过 FindDirtyBlocks 函数提前获取重叠 SSTable 中脏数据块的偏移量和大小，该函数描述在 Algorithm 3 中，并且类似于 BlockCompaction 算法的一个小版本。之后，我们使用多线程并发地读取这些脏数据块。这样的设计可以充分利用 SSD 的大规模内部并行性。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407152148768.png&#34; alt=&#34;image-20240407152148768&#34; /&gt;&lt;/p&gt;
+&lt;h2 id=&#34;optimizations-of-block-compaction&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#optimizations-of-block-compaction&#34;&gt;#&lt;/a&gt; OPTIMIZATIONS OF BLOCK COMPACTION&lt;/h2&gt;
+&lt;h3 id=&#34;selective-compaction&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#selective-compaction&#34;&gt;#&lt;/a&gt; Selective Compaction&lt;/h3&gt;
+&lt;p&gt;脏比例。脏比例是重叠的 SSTable 中脏数据块的百分比。如果脏比例高于特定阈值（MAX DIRTY RATIO），我们采用表压实以避免大量空间消耗。否则，我们选择块压实以减少写入放大。在图 4 中，Li+1 中最左侧的 SSTable 具有较低的脏比例。因此，它将通过块压实进行压实。另一方面，左二的 SSTable 具有较高的脏比例，因此它将通过表压实进行修改。在这里，我们使用 FindDirtyBlocks 算法（算法 3）来获取重叠的 SSTable 中脏数据块的大小。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407150506607.png&#34; alt=&#34;image-20240407150506607&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;有效比例。有效比例是重叠的 SSTable 中有效数据块的百分比。如果有效比例低于指定阈值（MIN VALID RATIO），我们使用表压实来移除重叠的 SSTable 中的过时数据块。例如，在图 4 中，Li+1 中的左三 SSTable 具有较低的有效比例。因此，它将通过表压实进行压实。&lt;/p&gt;
+&lt;p&gt;有效大小。有效大小指的是重叠的 SSTable 中有效数据块的大小。此比例与压实操作的规模相关。超过阈值（MAX VALID SIZE）的大有效大小意味着数据块可能是无序的。因此，我们使用表压实将 SSTable 拆分为几个小的有序 SSTable 文件。图 4 中的 Li+1 中最右侧的 SSTable 就是一个例子。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407150254296.png&#34; alt=&#34;image-20240407150254296&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;我们在除了 L0 和 L1 外的所有级别上都使用选择性压实。这是因为 L0 存储从主内存中刷新出的 SSTable，而不同的 SSTable 通常包含重叠的键范围。因此，L0 和 L1 之间的压实操作可能涉及所有级别上的所有 SSTable。因此，采用块压实是无用的，而表压实更加合适。 虽然除了 L0 和 L1 外的所有级别都可以使用选择性压实，但我们为不同的级别设置了不同的触发阈值。这样的设计基于两个原因。首先，我们注意到所有键值对都是从顶层到底层压实直到达到最底层的。因此，对于上层，我们更倾向于使用块压实来最小化上层的写入放大。其次，在回答范围查询时，LSM 树需要遍历许多级别的键值对，并且可能会扫描最底层，因为它存储了大部分键值对。因此，为了提高范围查询处理的效率，我们更倾向于执行表压实以保持较低级别的数据块排序。&lt;/p&gt;
+&lt;p&gt;Algorithm 4 展示了选择性压实的过程。当有效大小超过阈值时（Line 1-4），我们采用表压实来创建小的 SSTable。当有效比例小于阈值时（Line 5-8），我们还采用表压实来执行垃圾回收。此外，当脏比例小于阈值时（Line 10-14），我们采用块压实来避免写入放大。事实上，脏比例是空间放大和写入放大之间的权衡。对于 Li（i&amp;lt;N），我们的目标是避免写入放大，而对于 LN，我们的目标是避免空间放大。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407154206907.png&#34; alt=&#34;image-20240407154206907&#34; /&gt;&lt;/p&gt;
+&lt;h2 id=&#34;performance-evaluation&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#performance-evaluation&#34;&gt;#&lt;/a&gt; PERFORMANCE EVALUATION&lt;/h2&gt;
+&lt;h3 id=&#34;system-implementation&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#system-implementation&#34;&gt;#&lt;/a&gt; System Implementation&lt;/h3&gt;
+&lt;p&gt;A. 系统实现 我们在 LevelDB（版本 1.20）上实现了提出的块压实及其三种优化方法。LevelDB 是一个流行的开源键值存储，采用 LSM-tree 作为存储引擎。它由 Google 开发，使用 C++ 编写。许多先前的工作 [22]，[25] 都是在 LevelDB 上实现的用于改进 LSM-tree 的方法。此外，我们将我们的系统命名为 BlockDB，并使用系统对系统比较方案与其他系统进行比较。 下面我们简要描述了 BlockDB 中各种操作是如何实现的。与许多基于 LSM-tree 的引擎类似，BlockDB 支持基本的 API 接口，如 Put、Get、Delete、Range Query。&lt;/p&gt;
+&lt;p&gt;Put. 在插入键值对时，BlockDB 首先将键值对插入 Memtable。当触发刷新操作将 Immutable Memtable 刷新到 L0 时，键值对将被刷新到 L0 中的一个 SSTable 文件中。在 L0 中的键值对将通过压实操作合并到较低的级别中。&lt;/p&gt;
+&lt;p&gt;Get. BlockDB 首先搜索 Memtable 和 Immutable Memtable。然后，从 L0 搜索到最后一个级别。由于 L0 中的 SSTable 可能与其他 SSTable 重叠，因此 BlockDB 需要从最新的 SSTable 搜索到最旧的 SSTable。对于其他级别，所有的 SSTable 都按照非重叠的键范围排序，BlockDB 只需要搜索一个目标 SSTable。对于这个 SSTable，首先检查 SSTable 的布隆过滤器，如果搜索键在布隆过滤器中找到，则在索引块上进行搜索。请注意，BlockDB 中一个 SSTable 可能存在多个索引块。然而，只有最后创建的索引块才能定位有效的数据块。因此，对于每个 SSTable，BlockDB 只需要搜索一个索引块和一个数据块。&lt;/p&gt;
+&lt;p&gt;Delete. BlockDB 中的键删除操作与 LevelDB 和 RocksDB 中的操作类似。当删除一个键时，BlockDB 插入带有标记的键，表示它已被删除。当包含删除键的 SSTable 被压实操作合并时，删除键将从 SSTable 中删除。&lt;/p&gt;
+&lt;p&gt;Range Scan. 要执行范围扫描，BlockDB 使用 LSM-tree 迭代器，并通过调用 seek 方法将迭代器定位到起始键。然后，使用 next 和 value 方法扫描给定范围。&lt;/p&gt;
+&lt;h3 id=&#34;experimental-setting&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#experimental-setting&#34;&gt;#&lt;/a&gt; Experimental Setting&lt;/h3&gt;
+&lt;p&gt;我们在一台配备有两个 Intel-Xeon CPU 和 128 GB DDR4 内存的服务器上进行所有实验。操作系统为 Ubuntu-20，采用 64 位 Linux 4.15 内核，文件系统为 Ext4。存储设备为 1.92 TB Intel SSD D3-S4610 系列，顶部顺序读取速度为 560 MB/s，顶部顺序写入速度为 510 MB/s。 我们使用 YCSB（Yahoo! Cloud Serving Benchmark）基准作为工作负载。每个键设置为 32 B，每个值设置为 1 KB。我们按照先前工作 [8] 的相同方法配置 YCSB 工作负载，具有不同比例的写入、点查询或范围扫描。因此，我们构建了四个 YCSB 工作负载，列在表 III 中。所有工作负载中的读请求都包含点查询和范围扫描。在评估点查找性能时，我们将使用点查询。另一方面，在评估范围查询性能时，我们将使用范围扫描。如表 III 所示，读取请求的比例从 0%、20%、50%、80% 到 100% 变化，并且所有读取请求默认满足 Zipf 分布 (zipf=0.9)。此外，写入请求包含插入和更新。插入意味着用户将不存在的键值对放入 LSM 树中，更新意味着用户将现有的键值对放入 LSM 树中。 我们将 BlockDB 与三个现有的基于 LSM 树的键值存储进行比较，包括 LevelDB（版本 1.20）[6]、RocksDB（版本 6.16.5）[2] 和 L2SM [26]。LevelDB 和 RocksDB 是表压缩策略的代表。L2SM 是一种 2021 年提出的最先进的基于 LSM 树的引擎。在实验中，我们使用了 L2SM 的公共源代码 [27]。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407170848133.png&#34; alt=&#34;image-20240407170848133&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;write-performance&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#write-performance&#34;&gt;#&lt;/a&gt; Write Performance&lt;/h3&gt;
+&lt;p&gt;在这个实验中，我们使用纯写入的工作负载以统一方式加载不同规模的数据集（即，40 GB 和 80 GB）。正如图 5 所示，LevelDB 和 RocksDB 都表现出较差的写入性能，因为它们都使用了表压缩，导致了较大的写入放大。L2SM 在 LSM 树中采用了表压缩，并且受到了计算 SSTable 的热度和密度的影响。L2SM 的运行时间与 RocksDB 大致相同，甚至在 40 GB 的情况下增加了 7.7%。BlockDB 能够有效地减少写入放大，这归功于其块压缩策略。因此，与其他系统相比，BlockDB 的性能更好，运行时间减少了高达 28%，相对于 LevelDB。&lt;/p&gt;
+&lt;p&gt;需要注意的是，实验中 L2SM 显示出较差的写入性能。L2SM 高度依赖于工作负载中键的访问模式特征。当更新集中在少量 SSTable 上时，它表现良好。然而，当所有键值对均匀插入到 SSTable 中时，它将无法识别经常更新的热 SSTable。因此，L2SM 中的多级日志无法为 LSM 树带来好处。当多级日志中的 SSTable 移动到 LSM 树时，L2SM 也采用了表压缩，并且需要重写所有重叠的 SSTable，这将导致较大的写入放大并恶化写入性能。此外，L2SM 还有额外的开销，用于计算 SSTable 的热度和密度。&lt;/p&gt;
+&lt;p&gt;图 6 显示了从零开始插入 8000 万个键值对时的吞吐量曲线。我们可以看到，RocksDB 和 LevelDB 的吞吐量曲线相似，表明它们具有相似的写入性能。另一方面，BlockDB 在所有系统中显示出最佳的平均写入吞吐量，这归功于重写数据块的减少。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407171515394.png&#34; alt=&#34;image-20240407171515394&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;write-amplification&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#write-amplification&#34;&gt;#&lt;/a&gt; Write Amplification&lt;/h3&gt;
+&lt;p&gt;图 7 显示了在摄取不同数据集时的写入放大情况。LevelDB 和 RocksDB 使用表压缩，显示出类似的写入放大。与 LevelDB 和 RocksDB 相比，BlockDB 可以将写入放大减少高达 22.7%（40 GB）和 24.2%（80 GB）。L2SM 采用多级日志，可以帮助减少写入放大。然而，L2SM 高度依赖于键的写入模式。当键值对均匀插入时，所有 SSTable 将具有相似的热度和密度，而 L2SM 中的多级日志将无法受益于写入放大。此外，L2SM 还使用表压缩，在执行压缩时具有与 LevelDB 和 RocksDB 相似的写入放大。&lt;/p&gt;
+&lt;p&gt;BlockDB 采用块压缩，只需要在压缩过程中写入少量数据块，从而减少了写入放大。&lt;/p&gt;
+&lt;p&gt;此外，我们还测量了 LSM 树每个级别的写入放大情况，结果如图 8 所示。在这个实验中，LSM 树有五个级别（L0 ∼ L4）&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407172216910.png&#34; alt=&#34;image-20240407172216910&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;space-amplification&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#space-amplification&#34;&gt;#&lt;/a&gt; Space Amplification&lt;/h3&gt;
+&lt;p&gt;空间放大是反映 LSM 树空间可用性的关键因素。为了评估空间放大，我们首先加载了 4000/8000 万个键值对，然后对它们进行均匀更新。在执行更新时，我们监视 LSM 树的空间使用情况，并记录最大值。如图 9 所示，LevelDB 和 RocksDB 可以及时通过表压缩移除过时的 SSTable，并实现最低的空间放大。然而，L2SM 需要将 SSTable 移动到多级日志中以延迟更新到 LSM 树，这会导致额外的空间放大。BlockDB 会生成一些过时的数据块，这些数据块将在后续的表压缩操作中被收集并合并到 SSTable 中。如图 9 所示，与 RocksDB 相比，BlockDB 的空间使用量仅增加了高达 19.6%（40 GB）和 15.6%（80 GB）。需要注意的是，BlockDB 主要旨在减少 LSM 树的写入放大。与空间放大相比，写入放大会直接降低 LSM 树的性能，因为它会产生许多额外的 I/O 操作。另一方面，空间放大间接影响性能，可以通过 LSM 树上的索引块来缓解。这是因为每个 SSTable 总是与索引块相关联。因此，我们可以通过首先搜索索引块来读取数据块。总的来说，BlockDB 通过一些额外的空间放大改善了写入放大，但这样的设计有助于提高基于 LSM 树的引擎的整体性能。通常，优化 LSM 树的最佳方法是同时减少写入和空间放大，我们将把这个问题作为我们未来研究的方向之一。&lt;/p&gt;
+&lt;p&gt;此外，我们还测量了 BlockDB 中不同级别的空间放大情况，结果如图 10 所示。我们可以看到，在 BlockDB 中，大多数的空间放大发生在中间级别，而最后一级 L4 只引入了一些额外的空间。在中间级别，BlockDB 更有可能使用块压缩来减少写入放大，而对于最后一级，则会更频繁地触发表压缩，从而导致最后一级的空间放大较低。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407172950783.png&#34; alt=&#34;image-20240407172950783&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407173005140.png&#34; alt=&#34;image-20240407173005140&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;point-query&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#point-query&#34;&gt;#&lt;/a&gt; Point Query&lt;/h3&gt;
+&lt;p&gt;为了评估点查询的性能，我们使用具有不同读 / 写比例的工作负载，包括 RO（只读）、RH（读重）、RW（写读平衡）、WH（写重）和 WO（只写）。读操作是点查询，写操作是插入或更新。在这些工作负载中，点查询和更新遵循 Zipfan 分布（zipf=0.9）。在现代实现中，LSM 树通常配备了块缓存和 Bloom 过滤器以加快点查询。因此，对于所有系统，我们添加了一个 4GB 的块缓存（数据集的 10%）并启用了 Bloom 过滤器（每个键的比特数为 10）。&lt;/p&gt;
+&lt;p&gt;我们首先加载了 4000 万个键值对，然后使用 16 个线程发出了 4000 万个请求。图 11 显示了在混合点查询和插入工作负载下 LSM 树的性能。对于 RO 工作负载，LevelDB 和 RocksDB 的性能优于其他系统，因为它们具有较低的读放大。BlockDB 中的读取过程与 LevelDB 相同。随着插入比例的增加，BlockDB 的优势逐渐显现。对于 RW 和 WH 工作负载，BlockDB 相对于 RocksDB 的性能改善分别为 31.4% 和 36.2%。此外，L2SM 并未从分离的多级日志组件中受益。这有两个原因。首先，随机插入使得 L2SM 难以隔离对 LSM 树具有破坏性影响的键值项。其次，多级日志中存在重叠的 SSTable，导致读取放大。&lt;/p&gt;
+&lt;p&gt;图 12 显示了在混合点查询和更新工作负载下 LSM 树的性能。与 RocksDB 相比，BlockDB 可以将性能提高高达 13.4%（RH）、14.5%（RH）、20.6%（RW）和 24.2%（WH）。我们还使用不同的 zipf 值评估了所有竞争对手。较大的 zipf 值意味着访问更加倾斜。结果显示，RocksDB 的性能优于其他系统。对于高 zipf 值（0.99），BlockDB 的性能与 RocksDB 类似。对于其他情况，BlockDB 可以将性能提高高达 14.5% 和 20.3%。&lt;/p&gt;
+&lt;p&gt;图 14 显示了块缓存未命中的数量。我们可以看到，与其他竞争对手相比，BlockDB 的块缓存未命中次数较少，因为块压缩可以减少重写数据块的数量，从而减轻块缓存的失效问题。特别是对于其他读 / 写工作负载，BlockDB 可以将块缓存未命中次数分别减少高达 7.9%（RH）、10.9%（RW）和 10.2%（WH）。&lt;/p&gt;
+&lt;p&gt;L2SM 将频繁更新的 SSTable 隔离以改善 LSM 树的性能。然而，它要求键的访问模式具有高空间局部性。最佳情况是所有频繁更新的键都在一个小范围内，并存储在一个 SSTable 中。另一方面，如果频繁更新的键均匀分布在所有 SSTable 中，L2SM 的性能将下降。&lt;/p&gt;
+&lt;p&gt;&lt;img data-src=&#34;C:%5CUsers%5Czc123%5CAppData%5CRoaming%5CTypora%5Ctypora-user-images%5Cimage-20240407204906217.png&#34; alt=&#34;image-20240407204906217&#34; /&gt;&lt;/p&gt;
+&lt;h3 id=&#34;range-scan&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#range-scan&#34;&gt;#&lt;/a&gt; Range Scan&lt;/h3&gt;
+&lt;p&gt;为了评估范围扫描的性能，我们准备了四个新的工作负载，具有不同的扫描 / 写入比例。这种生成范围扫描工作负载的方法也被先前的研究所使用。因此，我们生成了四个范围扫描工作负载，分别标记为 SCAN-RO、SCAN-RH、SCAN-BA 和 SCAN-WH（Ro、RH、BA 和 WH 的定义列在表 III 中）。扫描操作的长度在 1 到 100 之间均匀分布。范围查询的起始键遵循 Zipfan 分布（zipf=0.9）。此外，所有范围扫描工作负载中的写操作都是插入。我们首先加载了 4000 万个键值对，然后使用 16 个线程发出了 1000 万个请求。&lt;/p&gt;
+&lt;p&gt;图 16 显示了每个工作负载的运行时间。我们可以看到，BlockDB 在所有工作负载上的性能均优于 LevelDB、RocksDB 和 L2SM。需要注意的是，LevelDB 支持 Seek Compaction。如果 LevelDB 检测到某个 SSTable 被频繁读取（超过一个阈值），它将触发压缩将该 SSTable 合并到下一个级别中。由于范围查询的起始键分布在整个键范围内，我们可以推断，在执行了大量范围查询后，所有上层的 SSTable，如 L0 和 L1，都将触发 Seek Compaction，导致树的级别下降。在我们的实验中，我们发现在执行 SCAN-RO 工作负载后，LevelDB 的级别从五降到了二。&lt;/p&gt;
+&lt;p&gt;与此同时，由于 L2SM 和 BlockDB 建立在 LevelDB 之上，它们也支持 Seek Compaction。然而，RocksDB 不使用 Seek Compaction，这意味着范围查询不会引发压缩。因此，在所有范围扫描实验中，RocksDB 的 LSM 树高度保持稳定。因此，当回答范围查询时，RocksDB 需要遍历比 BlockDB 更多的级别，导致其性能比 BlockDB 差。另一方面，尽管 LevelDB 和 L2SM 可以触发压缩以降低树的级别（这对范围查询友好），但触发的表压缩会带来额外的表压缩成本和与范围查询的磁盘带宽竞争，这使得 LevelDB 和 L2SM 的性能比 BlockDB 差。&lt;/p&gt;
+&lt;h3 id=&#34;memory-cost&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#memory-cost&#34;&gt;#&lt;/a&gt; Memory Cost&lt;/h3&gt;
+&lt;p&gt;LSM 树的内存消耗包括以下部分：（1）Memtable 和 Immutable Memtable；（2）块缓存；（3）表缓存。在这些部分中，表缓存限制了打开的 SSTable 文件的数量，并存储索引块和 Bloom 过滤器。由于 Memtable 和块缓存的大小固定，我们重点关注表缓存的内存成本。&lt;/p&gt;
+&lt;p&gt;图 15 显示了表缓存的内存成本。我们可以看到，BlockDB 用于索引块的内存比其他系统更多。这是因为 BlockDB 可能创建许多小的数据块（小于 4KB），这增加了索引块的总大小。为了解决这个问题，我们可以增加块大小以减少索引块的内存消耗。对于 Bloom 过滤器，LevelDB 采用基于块的过滤器，需要存储每个数据块的偏移量。因此，LevelDB 导致了大量的内存消耗。RocksDB、L2SM 和 BlockDB 都使用基于表的过滤器来跳过不包含搜索键的 SSTable。由于 BlockDB 中保留位的额外空间成本，BlockDB 的过滤器产生了比 RocksDB 更多的内存开销。&lt;/p&gt;
+&lt;h3 id=&#34;varying-the-sstable-size&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#varying-the-sstable-size&#34;&gt;#&lt;/a&gt; Varying the SSTable Size&lt;/h3&gt;
+&lt;p&gt;在这个实验中，我们比较了所有系统在不同 SSTable 大小下的性能。在 RocksDB 中，Memtable 大小与 SSTable 大小相同，默认情况下 L1 的大小与 L0 的大小相同。为了使比较足够公平，我们还为所有系统使用相同的设置，即 Memtable 大小等于 SSTable 大小，并且 L1 的大小与 L0 相同，即是 SSTable 大小的八倍。Li 和 Li+1 之间的大小比率设为 10。然后，我们改变 SSTable 大小并加载 4000 万个键值对，比较所有系统的运行时间和写入放大率。&lt;/p&gt;
+&lt;p&gt;图 17 和图 18 分别显示了运行时间和写入放大率。随着 SSTable 大小的增加，写入性能和写入放大率都得到了改善。原因有两个。首先，更大的 SSTable 增加了 L0 的容量，可以降低树的高度，并减少插入引起的写入放大。其次，更大的 SSTable 将增加压缩操作涉及的键值对数量，这有助于减少压缩的频率。如图所示，当 SSTable 大小变化时，BlockDB 的运行时间最多可以减少 43.6%，写入流量最多可以减少 32%。&lt;/p&gt;
+&lt;p&gt;由于对于所有系统，L1 的大小设为 SSTable 大小的八倍，我们可以推断，小的 SSTable 会导致 LSM 树较高。例如，假设当 SSTable 大小为 2 MB 时，LSM 树有六个级别，当 SSTable 大小增加到 8 MB 时，可能只有五个级别，因为更大的 SSTable 可以容纳更多的键值对。&lt;/p&gt;
+&lt;p&gt;需要注意的是，在 LevelDB 和 RocksDB 中使用小的 SSTable 无法减少写入放大，因为它们总是需要重写 Li 中与选定 SSTable 重叠的所有 Li+1 中的 SSTable。&lt;/p&gt;
+&lt;p&gt;与 LevelDB 和 RocksDB 不同，BlockDB 只需要写回 Li+1 中受影响的数据块，而不是重叠的 SSTable。即使 SSTable 足够小，例如，只有一个包含两个键值对的数据块，BlockDB 仍然可以比 LevelDB 和 RocksDB 减少更多的写入放大。例如，如果 Li 中选定的 SSTable 文件具有两个键，例如 &amp;quot;1&amp;quot; 和 &amp;quot;100&amp;quot;，而 Li+1 中重叠的 SSTable 数量为 10，其键的范围从 &amp;quot;2&amp;quot; 到 &amp;quot;99&amp;quot;，那么在压缩期间，LevelDB 和 RocksDB 必须重写 10 个 SSTable，而 BlockDB 只需要写入两个数据块，因为键 &amp;quot;1&amp;quot; 只与一个数据块重叠，键 &amp;quot;100&amp;quot; 也是如此。尽管 LevelDB 和 RocksDB 支持微不足道的压缩（即，如果 Li 中的一个 SSTable 与 Li+1 中的任何 SSTable 都不重叠，则在压缩期间不需要重写 Li+1 中的任何 SSTable），但它不会影响图 17 和图 18 中显示的比较结果，因为 BlockDB 也支持微不足道的压缩。&lt;/p&gt;
+&lt;h3 id=&#34;conclusions-and-future-work&#34;&gt;&lt;a class=&#34;anchor&#34; href=&#34;#conclusions-and-future-work&#34;&gt;#&lt;/a&gt; CONCLUSIONS AND FUTURE WORK&lt;/h3&gt;
+&lt;p&gt;本文针对 LSM 树上的写入放大和块缓存失效问题进行了研究。我们首先提出了一种新的压缩方案，称为块压缩，采用基于块的合并策略执行压缩操作。与传统的表压缩相比，后者使用 SSTable 级别的合并策略，块压缩可以避免大量的写入 I/O，并同时缓解块缓存失效问题。此外，我们提出了三种对块压缩的优化方法，可以加速合并过程并减少块压缩的副作用。我们提出了一种成本分析来证明块压缩可以在不牺牲读性能的情况下减少写入放大。最后，我们在 LevelDB（版本 1.20）上实现了块压缩及其优化，形成了一个名为 BlockDB 的新的键值存储系统。我们对 YCSB 工作负载进行了大量实验，将 BlockDB 与三种基于 LSM 树的键值存储系统（包括 LevelDB、RocksDB 和 L2SM）进行了比较。结果显示，与竞争对手相比，BlockDB 可以显著减少写入放大和运行时间。此外，它可以保持高效的点查询和范围扫描性能。&lt;/p&gt;
+&lt;p&gt;在未来的工作中，我们将考虑一些研究方向。首先，我们将探索在新型存储设备上的块压缩，如分区命名空间（Zoned Namespaces，ZNS）SSD [30] 和持久性内存 [31]。新型存储设备上的键值存储存在一些挑战，使用块压缩开发新的解决方案具有潜力。其次，我们将研究有效的方法来减少块压缩引起的空间放大。最后，我们将考虑改进 BlockDB 的读性能，例如使用学习的预取策略来管理块缓存 [14] 或构建对热度敏感的 LSM 树 [34]。&lt;/p&gt;
+ ]]></description>
+        </item>
+        <item>
+            <guid isPermalink="true">http://yoursite.com/hello-world/</guid>
+            <title>Hello World</title>
+            <link>http://yoursite.com/hello-world/</link>
+            <pubDate>Sat, 13 Apr 2024 23:28:16 +0800</pubDate>
+            <description><![CDATA[ &lt;p&gt;Welcome to &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvLw==&#34;&gt;Hexo&lt;/span&gt;! This is your very first post. Check &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3Mv&#34;&gt;documentation&lt;/span&gt; for more info. If you get any problems when using Hexo, you can find the answer in &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3MvdHJvdWJsZXNob290aW5nLmh0bWw=&#34;&gt;troubleshooting&lt;/span&gt; or you can ask me on &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9naXRodWIuY29tL2hleG9qcy9oZXhvL2lzc3Vlcw==&#34;&gt;GitHub&lt;/span&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;quick-start&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#quick-start&#34;&gt;#&lt;/a&gt; Quick Start&lt;/h2&gt;
+&lt;h3 id=&#34;create-a-new-post&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#create-a-new-post&#34;&gt;#&lt;/a&gt; Create a new post&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&#34;gutter&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&#34;code&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;$ hexo new &lt;span class=&#34;string&#34;&gt;&amp;quot;My New Post&amp;quot;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;More info: &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3Mvd3JpdGluZy5odG1s&#34;&gt;Writing&lt;/span&gt;&lt;/p&gt;
+&lt;h3 id=&#34;run-server&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#run-server&#34;&gt;#&lt;/a&gt; Run server&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&#34;gutter&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&#34;code&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;$ hexo server&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;More info: &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3Mvc2VydmVyLmh0bWw=&#34;&gt;Server&lt;/span&gt;&lt;/p&gt;
+&lt;h3 id=&#34;generate-static-files&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#generate-static-files&#34;&gt;#&lt;/a&gt; Generate static files&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&#34;gutter&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&#34;code&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;$ hexo generate&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;More info: &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3MvZ2VuZXJhdGluZy5odG1s&#34;&gt;Generating&lt;/span&gt;&lt;/p&gt;
+&lt;h3 id=&#34;deploy-to-remote-sites&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#deploy-to-remote-sites&#34;&gt;#&lt;/a&gt; Deploy to remote sites&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&#34;gutter&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&#34;code&#34;&gt;&lt;pre&gt;&lt;span class=&#34;line&#34;&gt;$ hexo deploy&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;More info: &lt;span class=&#34;exturl&#34; data-url=&#34;aHR0cHM6Ly9oZXhvLmlvL2RvY3Mvb25lLWNvbW1hbmQtZGVwbG95bWVudC5odG1s&#34;&gt;Deployment&lt;/span&gt;&lt;/p&gt;
+ ]]></description>
+        </item>
+    </channel>
+</rss>
