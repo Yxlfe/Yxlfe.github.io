@@ -2,15 +2,15 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>http://yoursite.com</id>
     <title>Hexo</title>
-    <subtitle>subtitle</subtitle>
+    <subtitle>错的是这个世界</subtitle>
     <icon>http://yoursite.com/images/favicon.ico</icon>
     <link href="http://yoursite.com" />
     <author>
       <name>Yxlfe</name>
     </author>
     <updated>2024-04-15T12:21:25.000Z</updated>
-    <category term="关键词1" />
-    <category term="关键词2" />
+    <category term="CS" />
+    <category term="牛马" />
     <entry>
         <id>http://yoursite.com/block%20compaction/</id>
         <title>BlockDB</title>

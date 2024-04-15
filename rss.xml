@@ -2,18 +2,18 @@
 <rss version="2.0">
     <channel>
         <title>Hexo</title>
-        <subtitle>subtitle</subtitle>
+        <subtitle>错的是这个世界</subtitle>
         <icon>http://yoursite.com/images/favicon.ico</icon>
         <link>http://yoursite.com</link>
         <author>
           <name>Yxlfe</name>
         </author>
-        <description>描述123</description>
+        <description>私人博客，无聊玩玩</description>
         <language>zh-CN</language>
         <pubDate>Mon, 15 Apr 2024 20:21:25 +0800</pubDate>
         <lastBuildDate>Mon, 15 Apr 2024 20:21:25 +0800</lastBuildDate>
-        <category term="关键词1" />
-        <category term="关键词2" />
+        <category term="CS" />
+        <category term="牛马" />
         <item>
             <guid isPermalink="true">http://yoursite.com/block%20compaction/</guid>
             <title>BlockDB</title>

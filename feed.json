@@ -1,9 +1,9 @@
 {
     "version": "https://jsonfeed.org/version/1",
     "title": "Hexo",
-    "subtitle": "subtitle",
+    "subtitle": "错的是这个世界",
     "icon": "http://yoursite.com/images/favicon.ico",
-    "description": "描述123",
+    "description": "私人博客，无聊玩玩",
     "home_page_url": "http://yoursite.com",
     "items": [
         {
